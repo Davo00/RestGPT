@@ -2,23 +2,31 @@ import os
 import json
 import logging
 import time
+from dotenv import load_dotenv
+from llm_commons.langchain.proxy import ChatOpenAI
 import yaml
 
 from langchain.requests import Requests
-from langchain import OpenAI
+
+from gen_ai_hub import GenAIHubProxyClient
+from gen_ai_hub.proxy import set_proxy_version
 
 from utils import reduce_openapi_spec, ColorPrint, MyRotatingFileHandler
 from model import RestGPT
 
 logger = logging.getLogger()
-
+load_dotenv(dotenv_path='.env', verbose=True, override=False)
+set_proxy_version('gen-ai-hub')
+proxy_client=GenAIHubProxyClient()
 
 def run(query, api_spec, requests_wrapper, simple_parser=False):
-    llm = OpenAI(model_name="text-davinci-003", temperature=0.0, max_tokens=256)
+    llm = ChatOpenAI(proxy_model_name="gpt-4", proxy_client=proxy_client)
+    #llm = OpenAI(model_name="text-davinci-003", temperature=0.0, max_tokens=256)
     # llm = OpenAI(model_name="gpt-3.5-turbo-0301", temperature=0.0, max_tokens=256)
     rest_gpt = RestGPT(llm, api_spec=api_spec, scenario='tmdb', requests_wrapper=requests_wrapper, simple_parser=simple_parser)
 
     logger.info(f"Query: {query}")
+
 
     start_time = time.time()
     rest_gpt.run(query)
@@ -29,6 +37,7 @@ def main():
     config = yaml.load(open('config.yaml', 'r'), Loader=yaml.FullLoader)
     os.environ["OPENAI_API_KEY"] = config['openai_api_key']
     os.environ["TMDB_ACCESS_TOKEN"] = config['tmdb_access_token']
+    print(config['tmdb_access_token'])
 
     log_dir = os.path.join("logs", "restgpt_tmdb")
     if not os.path.exists(log_dir):
@@ -53,7 +62,7 @@ def main():
 
     requests_wrapper = Requests(headers=headers)
 
-    queries = json.load(open('datasets/tmdb.json', 'r'))
+    queries = json.load(open('datasets/tmdb.json', 'r'))[:10]
     queries = [item['query'] for item in queries]
 
     for idx, query in enumerate(queries, 1):
@@ -61,7 +70,7 @@ def main():
             print('#' * 20 + f" Query-{idx} " + '#' * 20)
             run(query, api_spec, requests_wrapper, simple_parser=False)
         except Exception as e:
-            print(f"Query: {query}\nError: {e}")
+            print(f"TMDB Query: {query}\nError: {e}")
         finally:
             file_handler.doRollover()
     
